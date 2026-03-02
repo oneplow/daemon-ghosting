@@ -10,7 +10,6 @@ import { getActiveSessionCount } from "./console.js";
 import { docker, powerAction, getContainerStats, listManagedContainers } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
-import { getNodeMetrics } from "./metrics.js";
 
 /**
  * HTTP API Server
