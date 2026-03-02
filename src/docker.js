@@ -3,6 +3,8 @@ import config from "./config.js";
 
 const docker = new Docker({ socketPath: config.dockerSocket });
 
+import fs from "fs/promises";
+
 /**
  * Pull a Docker image
  */
@@ -26,6 +28,9 @@ export async function pullImage(image) {
 export async function createServer({ serverId, image, env, limits, ports }) {
     const containerName = `${config.containerPrefix}${serverId.substring(0, 12)}`;
     const dataPath = `${config.dataDir}/${serverId}`;
+
+    // Ensure directory exists with proper permissions
+    await fs.mkdir(dataPath, { recursive: true }).catch(() => { });
 
     // Pull image first
     await pullImage(image);
@@ -104,15 +109,34 @@ export async function powerAction(dockerId, action) {
 }
 
 /**
- * Delete a container
+ * Delete a container and its data
  */
 export async function deleteServer(dockerId) {
     const container = docker.getContainer(dockerId);
+    let serverId = null;
+
     try {
+        const info = await container.inspect();
+        serverId = info.Config.Labels["ghosting.server_id"];
         await container.stop({ t: 5 }).catch(() => { });
     } catch { }
-    await container.remove({ force: true, v: true });
-    console.log(`[Docker] Container removed: ${dockerId}`);
+
+    try {
+        await container.remove({ force: true, v: true });
+        console.log(`[Docker] Container removed: ${dockerId}`);
+    } catch (e) {
+        console.error(`[Docker] Failed to remove container ${dockerId}:`, e.message);
+    }
+
+    if (serverId) {
+        const dataPath = `${config.dataDir}/${serverId}`;
+        try {
+            await fs.rm(dataPath, { recursive: true, force: true });
+            console.log(`[Docker] Data directory removed: ${dataPath}`);
+        } catch (e) {
+            console.error(`[Docker] Failed to remove data directory ${dataPath}:`, e.message);
+        }
+    }
 }
 
 /**

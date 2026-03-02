@@ -7,7 +7,7 @@ import config from "./config.js";
 import { getConnectionStatus } from "./websocket.js";
 import { getNodeMetrics, getServerMetrics } from "./metrics.js";
 import { getActiveSessionCount } from "./console.js";
-import { docker, createServer, powerAction, getContainerStats, listManagedContainers } from "./docker.js";
+import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
 
@@ -117,6 +117,21 @@ export function startHTTPServer() {
                     }
                     return;
                 }
+            }
+
+            // ── Delete container ────────────────
+            const deleteMatch = pathname.match(/^\/api\/servers\/(.+)$/);
+            if (deleteMatch && req.method === "DELETE") {
+                const dockerId = deleteMatch[1];
+                try {
+                    await deleteServer(dockerId);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: "Failed to delete container: " + e.message }));
+                }
+                return;
             }
 
             // ── Servers metrics ────────────────
