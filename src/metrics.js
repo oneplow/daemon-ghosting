@@ -9,7 +9,7 @@ export async function getNodeMetrics() {
     const [mem, cpu, disk, load, net, fsSize] = await Promise.all([
         si.mem(),
         si.currentLoad(),
-        si.diskIO().catch(() => ({})),
+        si.disksIO().catch(() => ({})),
         si.fullLoad().catch(() => 0),
         si.networkStats().catch(() => []),
         si.fsSize().catch(() => []),
