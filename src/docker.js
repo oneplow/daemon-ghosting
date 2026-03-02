@@ -68,6 +68,8 @@ export async function createServer({ serverId, image, env, limits, ports }) {
         Image: image,
         Env: envArray,
         ExposedPorts: exposedPorts,
+        Tty: true,
+        OpenStdin: true,
         HostConfig: {
             Memory: (limits?.memory || 1024) * 1024 * 1024, // MB → bytes
             NanoCpus: Math.floor((limits?.cpu || 100) * 1e7), // % → nanocpus
@@ -176,6 +178,22 @@ export async function execCommand(dockerId, command) {
 }
 
 /**
+ * Write a command directly to a container's stdin (for game server commands)
+ */
+export async function writeToContainer(dockerId, command) {
+    const container = docker.getContainer(dockerId);
+    const stream = await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: false,
+        stderr: false,
+    });
+
+    // Most game servers expect a newline at the end of the command
+    stream.write(command + "\n");
+}
+
+/**
  * Get container stats (CPU, memory, network)
  */
 export async function getContainerStats(dockerId) {
@@ -191,11 +209,19 @@ export async function getContainerStats(dockerId) {
     const memUsed = stats.memory_stats.usage || 0;
     const memLimit = stats.memory_stats.limit || 0;
 
+    const info = await container.inspect();
+    const serverId = info.Config.Labels["ghosting.server_id"];
+
+    // Add missing files import if not present
+    const { getDirectorySize } = await import("./files.js");
+    const diskBytes = serverId ? await getDirectorySize(`${config.dataDir}/${serverId}`) : 0;
+
     return {
         cpu: Math.round(cpuPercent * 100) / 100,
         memory: Math.round(memUsed / 1024 / 1024), // MB
         memoryLimit: Math.round(memLimit / 1024 / 1024), // MB
         memoryPercent: memLimit > 0 ? Math.round((memUsed / memLimit) * 10000) / 100 : 0,
+        disk: Math.round(diskBytes / 1024 / 1024), // Add this in MB
         network: {
             rx: Object.values(stats.networks || {}).reduce((a, n) => a + n.rx_bytes, 0),
             tx: Object.values(stats.networks || {}).reduce((a, n) => a + n.tx_bytes, 0),

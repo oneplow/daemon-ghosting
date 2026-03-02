@@ -132,15 +132,11 @@ async function handleMessage({ event, payload }) {
 
             // ── Console ──────────────────────────
             case "server:console:input": {
-                const result = await sendCommand(
+                await sendCommand(
                     payload.serverId,
                     payload.dockerId,
                     payload.command
                 );
-                send("server:console:output", {
-                    serverId: payload.serverId,
-                    line: result.output,
-                });
                 break;
             }
 

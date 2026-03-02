@@ -1,4 +1,4 @@
-import { streamLogs, execCommand } from "./docker.js";
+import { streamLogs, writeToContainer } from "./docker.js";
 
 /**
  * Active console sessions
@@ -56,10 +56,11 @@ export async function sendCommand(serverId, dockerId, command) {
     console.log(`[Console] Command on ${serverId}: ${command}`);
 
     try {
-        const output = await execCommand(dockerId, command);
-        return { success: true, output };
-    } catch (err) {
-        return { success: false, output: `Error: ${err.message}` };
+        await writeToContainer(dockerId, command);
+        return { success: true };
+    } catch (e) {
+        console.error(`[Console] Error:`, e.message);
+        return { success: false, error: e.message };
     }
 }
 
