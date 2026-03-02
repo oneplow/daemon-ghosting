@@ -177,19 +177,25 @@ export function startHTTPServer() {
                 const serverId = fileContentMatch[1];
                 const reqPath = url.searchParams.get("path") || "/";
 
-                if (req.method === "GET") {
-                    const content = await readFile(serverId, reqPath);
-                    res.writeHead(200, { "Content-Type": "text/plain" });
-                    res.end(content);
-                    return;
-                }
+                try {
+                    if (req.method === "GET") {
+                        const content = await readFile(serverId, reqPath);
+                        res.writeHead(200, { "Content-Type": "text/plain" });
+                        res.end(content);
+                        return;
+                    }
 
-                if (req.method === "PUT") {
-                    const body = await readBody(req);
-                    const { content } = JSON.parse(body);
-                    await writeFile(serverId, reqPath, content);
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ success: true }));
+                    if (req.method === "PUT") {
+                        const body = await readBody(req);
+                        const { content } = JSON.parse(body);
+                        await writeFile(serverId, reqPath, content);
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ success: true }));
+                        return;
+                    }
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: "File error: " + e.message }));
                     return;
                 }
             }
