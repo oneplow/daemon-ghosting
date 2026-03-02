@@ -33,9 +33,9 @@ export async function getNodeMetrics() {
             perCore: cpu.cpus?.map((c) => Math.round(c.load * 100) / 100) || [],
         },
         disk: {
-            total: fsSize[0] ? Math.round(fsSize[0].size / 1024 / 1024) : 0,
-            used: fsSize[0] ? Math.round(fsSize[0].used / 1024 / 1024) : 0,
-            percent: fsSize[0] ? Math.round(fsSize[0].use) : 0,
+            total: Math.round(fsSize.reduce((acc, fs) => acc + (fs.size || 0), 0) / 1024 / 1024),
+            used: Math.round(fsSize.reduce((acc, fs) => acc + (fs.used || 0), 0) / 1024 / 1024),
+            percent: fsSize.length ? Math.round((fsSize.reduce((acc, fs) => acc + (fs.used || 0), 0) / (fsSize.reduce((acc, fs) => acc + (fs.size || 0), 0) || 1)) * 100) : 0,
         },
         network: {
             interfaces: net.map((n) => ({
