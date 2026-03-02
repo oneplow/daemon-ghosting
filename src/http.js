@@ -7,7 +7,7 @@ import config from "./config.js";
 import { getConnectionStatus } from "./websocket.js";
 import { getNodeMetrics, getServerMetrics } from "./metrics.js";
 import { getActiveSessionCount } from "./console.js";
-import { docker, powerAction, getContainerStats, listManagedContainers } from "./docker.js";
+import { docker, createServer, powerAction, getContainerStats, listManagedContainers } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
 
@@ -94,12 +94,29 @@ export function startHTTPServer() {
                 return;
             }
 
-            // ── List containers ────────────────
-            if (pathname === "/api/servers" && req.method === "GET") {
-                const containers = await listManagedContainers();
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ containers }));
-                return;
+            // ── List/Create containers ────────────────
+            if (pathname === "/api/servers") {
+                if (req.method === "GET") {
+                    const containers = await listManagedContainers();
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ containers }));
+                    return;
+                }
+
+                if (req.method === "POST") {
+                    const body = await readBody(req);
+                    const { serverId, image, env, limits, ports } = JSON.parse(body);
+
+                    try {
+                        const result = await createServer({ serverId, image, env, limits, ports });
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify(result));
+                    } catch (e) {
+                        res.writeHead(500, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ message: "Failed to create container: " + e.message }));
+                    }
+                    return;
+                }
             }
 
             // ── Servers metrics ────────────────
