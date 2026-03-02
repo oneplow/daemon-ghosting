@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import config from "./config.js";
-import tar from "tar";
+import * as tar from "tar";
 
 export async function createBackup(serverId, backupName) {
     const dataDir = path.resolve(config.dataDir, serverId);

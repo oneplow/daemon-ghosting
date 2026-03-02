@@ -2,9 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import config from "./config.js";
 
-import fs from "fs/promises";
-import path from "path";
-import config from "./config.js";
+
 
 /**
  * Recursively get the size of a directory in bytes.
