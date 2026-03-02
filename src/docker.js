@@ -6,9 +6,19 @@ const docker = new Docker({ socketPath: config.dockerSocket });
 import fs from "fs/promises";
 
 /**
- * Pull a Docker image
+ * Pull a Docker image only if missing
  */
 export async function pullImage(image) {
+    try {
+        const imageInfo = await docker.getImage(image).inspect();
+        if (imageInfo) {
+            console.log(`[Docker] Image ${image} already exists locally. Skipping pull.`);
+            return;
+        }
+    } catch (e) {
+        // Image not found, proceed to pull
+    }
+
     console.log(`[Docker] Pulling image: ${image}`);
     return new Promise((resolve, reject) => {
         docker.pull(image, (err, stream) => {
