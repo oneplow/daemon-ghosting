@@ -268,14 +268,39 @@ export function streamLogs(dockerId, onLine, options = {}) {
             }
 
             stream.on("data", (chunk) => {
-                // Docker uses an 8-byte header for multiplexing streams (stdout/stderr)
-                // When parsing raw streams, we need to handle this correctly.
-                // However, since we requested Tty: true in createServer, the header is not 8 bytes
-                // The issue here is .replace(/^.{8}/, "") is blindly removing the first 8 characters
-                // which causes the "opying", "reating", "isabling" issue.
-                // Let's just convert it to string directly.
-                const text = chunk.toString("utf8");
-                if (text) onLine(text);
+                // If TTY is false, Docker prepends an 8-byte multiplex header [type(1), 0,0,0, size(4)].
+                // We must properly parse it instead of blindly dropping 8 bytes.
+                let offset = 0;
+                let text = "";
+
+                // Read through the chunk buffer
+                while (offset < chunk.length) {
+                    // Check if this looks like a Docker multiplex header:
+                    // type is 1 (stdout) or 2 (stderr), next 3 bytes are 0
+                    if (chunk.length - offset >= 8 &&
+                        (chunk[offset] === 1 || chunk[offset] === 2) &&
+                        chunk[offset + 1] === 0 &&
+                        chunk[offset + 2] === 0 &&
+                        chunk[offset + 3] === 0) {
+
+                        // Read the size (bytes 4-7, big-endian)
+                        const size = chunk.readUInt32BE(offset + 4);
+                        if (size > 0 && offset + 8 + size <= chunk.length) {
+                            text += chunk.toString("utf8", offset + 8, offset + 8 + size);
+                            offset += 8 + size;
+                            continue;
+                        }
+                    }
+
+                    // If it doesn't match the header signature or is TTY mode,
+                    // just process the rest of the chunk as raw UTF-8.
+                    text += chunk.toString("utf8", offset);
+                    break;
+                }
+
+                if (text.trim()) {
+                    onLine(text); // Preserve internal whitespace, just drop empty lines
+                }
             });
 
             stream.on("error", () => { });
