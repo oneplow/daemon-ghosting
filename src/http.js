@@ -398,15 +398,17 @@ export function startHTTPServer() {
                     }
                 }
 
-                if (text && ws.readyState === ws.OPEN) {
-                    ws.send(JSON.stringify({ event: "output", data: text }));
+                if (text) {
+                    // Filter out [Server process ended] with potential ANSI codes
+                    const filteredText = text.replace(/(\x1B\[[0-9;]*[JKmsu])?\[Server process ended\](\x1B\[[0-9;]*[JKmsu])?/g, "");
+                    if (filteredText && ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: "output", data: filteredText }));
+                    }
                 }
             });
 
-            // When stream ends (container stopped/restarted), close WS so frontend reconnects
             stream.on("end", () => {
                 if (ws.readyState === ws.OPEN) {
-                    ws.send(JSON.stringify({ event: "output", data: "\r\n[Server process ended]\r\n" }));
                     ws.close(1000, "stream ended");
                 }
             });
