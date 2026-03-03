@@ -68,9 +68,10 @@ export async function listFiles(serverId, reqPath = "/") {
             })
         );
 
-        // Filter out any errors and sort (dirs first, then files alphabetically)
+        // Filter out any errors, RCON files, and sort (dirs first, then files alphabetically)
         return filesInfo
             .filter(Boolean)
+            .filter(file => !file.name.startsWith('.rcon-cli'))
             .sort((a, b) => {
                 if (a.type === b.type) return a.name.localeCompare(b.name);
                 return a.type === "directory" ? -1 : 1;

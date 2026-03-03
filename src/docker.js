@@ -105,10 +105,22 @@ export async function powerAction(dockerId, action) {
             await container.start();
             break;
         case "stop":
-            await container.stop({ t: 15 });
+            // Attempt graceful stop if it's a game server (MC)
+            try {
+                await writeToContainer(dockerId, "stop");
+            } catch (err) {
+                console.warn("[Docker] Failed to send stop command to stdin, falling back to SIGTERM:", err.message);
+            }
+            await container.stop({ t: 20 });
             break;
         case "restart":
-            await container.restart({ t: 15 });
+            // Attempt graceful restart (stop command + start)
+            try {
+                await writeToContainer(dockerId, "stop");
+            } catch (err) {
+                console.warn("[Docker] Failed to send stop command for restart:", err.message);
+            }
+            await container.restart({ t: 20 });
             break;
         case "kill":
             await container.kill();
@@ -256,9 +268,14 @@ export function streamLogs(dockerId, onLine, options = {}) {
             }
 
             stream.on("data", (chunk) => {
-                // Remove Docker header (8 bytes) from each frame
-                const line = chunk.toString().replace(/^.{8}/, "").trim();
-                if (line) onLine(line);
+                // Docker uses an 8-byte header for multiplexing streams (stdout/stderr)
+                // When parsing raw streams, we need to handle this correctly.
+                // However, since we requested Tty: true in createServer, the header is not 8 bytes
+                // The issue here is .replace(/^.{8}/, "") is blindly removing the first 8 characters
+                // which causes the "opying", "reating", "isabling" issue.
+                // Let's just convert it to string directly.
+                const text = chunk.toString("utf8");
+                if (text) onLine(text);
             });
 
             stream.on("error", () => { });
