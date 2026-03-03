@@ -358,6 +358,7 @@ export function startHTTPServer() {
             const container = docker.getContainer(containerId);
             const info = await container.inspect();
             const serverId = info.Config.Labels["ghosting.server_id"];
+            const isTty = info.Config.Tty;
 
             if (!serverId) throw new Error("Not a managed server");
 
@@ -371,9 +372,42 @@ export function startHTTPServer() {
 
             // Send data to client
             stream.on("data", (chunk) => {
-                const line = chunk.toString().replace(/^.{8}/, ""); // strip docker header
+                let text;
+                if (isTty) {
+                    // TTY mode: no multiplex headers, raw text
+                    text = chunk.toString("utf8");
+                } else {
+                    // Non-TTY: Docker prepends 8-byte multiplex header per frame
+                    text = "";
+                    let offset = 0;
+                    while (offset < chunk.length) {
+                        if (chunk.length - offset >= 8 &&
+                            (chunk[offset] === 1 || chunk[offset] === 2) &&
+                            chunk[offset + 1] === 0 &&
+                            chunk[offset + 2] === 0 &&
+                            chunk[offset + 3] === 0) {
+                            const size = chunk.readUInt32BE(offset + 4);
+                            if (size > 0 && offset + 8 + size <= chunk.length) {
+                                text += chunk.toString("utf8", offset + 8, offset + 8 + size);
+                                offset += 8 + size;
+                                continue;
+                            }
+                        }
+                        text += chunk.toString("utf8", offset);
+                        break;
+                    }
+                }
+
+                if (text && ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({ event: "output", data: text }));
+                }
+            });
+
+            // When stream ends (container stopped/restarted), close WS so frontend reconnects
+            stream.on("end", () => {
                 if (ws.readyState === ws.OPEN) {
-                    ws.send(JSON.stringify({ event: "output", data: line }));
+                    ws.send(JSON.stringify({ event: "output", data: "\r\n[Server process ended]\r\n" }));
+                    ws.close(1000, "stream ended");
                 }
             });
 
