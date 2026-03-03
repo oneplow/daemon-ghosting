@@ -253,10 +253,12 @@ export function startHTTPServer() {
             // ── Backups ────────────────────────────
             const backupsMatch = pathname.match(/^\/api\/servers\/(.+)\/backups\/?(.*)$/);
             if (backupsMatch) {
-                const serverId = backupsMatch[1];
+                const serverId = backupsMatch[1]; // Correct UUID passed from Web
                 const actionParam = backupsMatch[2]; // e.g. "", "xyz.tar.gz", "xyz.tar.gz/restore"
 
                 try {
+                    console.log(`[HTTP] Backup action: ${req.method} for Server: ${serverId}, Action: ${actionParam}`);
+
                     if (req.method === "GET" && !actionParam) {
                         const backups = await listBackups(serverId);
                         res.writeHead(200, { "Content-Type": "application/json" });
@@ -295,6 +297,7 @@ export function startHTTPServer() {
                         return;
                     }
                 } catch (e) {
+                    console.error(`[HTTP] Backup error:`, e.message);
                     res.writeHead(400, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ message: e.message }));
                     return;

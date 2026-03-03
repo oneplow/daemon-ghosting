@@ -14,17 +14,32 @@ export async function createBackup(serverId, backupName) {
     const filename = `${backupName || "backup"}-${timestamp}.tar.gz`;
     const backupPath = path.resolve(backupDir, filename);
 
-    // Create tarball
-    await tar.c(
-        {
-            gzip: true,
-            file: backupPath,
-            cwd: dataDir, // Pack contents of the data dir
-        },
-        ["."]
-    );
+    // Ensure data directory exists and has files
+    try {
+        const items = await fs.readdir(dataDir);
+        console.log(`[Backup] Starting backup for ${serverId}. Files to pack: ${items.length}`);
+        if (items.length === 0) {
+            console.warn(`[Backup] Warning: Data directory is empty for ${serverId}`);
+        }
+    } catch (e) {
+        console.error(`[Backup] Data directory not found: ${dataDir}`);
+        throw new Error("Server data directory is missing. Please start the server at least once.");
+    }
+
+    // Create tarball and ensure it's fully written
+    await new Promise((resolve, reject) => {
+        tar.c(
+            {
+                gzip: true,
+                file: backupPath,
+                cwd: dataDir,
+            },
+            ["."]
+        ).then(resolve).catch(reject);
+    });
 
     const stats = await fs.stat(backupPath);
+    console.log(`[Backup] Completed: ${filename} (${stats.size} bytes)`);
     return { name: filename, size: stats.size, createdAt: stats.birthtime };
 }
 
