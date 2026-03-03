@@ -123,7 +123,16 @@ export async function powerAction(dockerId, action) {
             await container.restart({ t: 20 });
             break;
         case "kill":
-            await container.kill();
+            try {
+                await container.kill();
+            } catch (err) {
+                // Ignore error if container is not running (409 Conflict)
+                if (err.statusCode === 409) {
+                    console.log(`[Docker] Kill skipped: Container ${dockerId} is not running`);
+                } else {
+                    throw err;
+                }
+            }
             break;
         default:
             throw new Error(`Unknown power action: ${action}`);

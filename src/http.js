@@ -151,6 +151,22 @@ export function startHTTPServer() {
                 }
 
                 if (req.method === "DELETE") {
+                    try {
+                        const body = await readBody(req).catch(() => null);
+                        if (body) {
+                            const { paths } = JSON.parse(body);
+                            if (Array.isArray(paths)) {
+                                console.log(`[HTTP] Bulk delete for ${serverId}: ${paths.length} items`);
+                                for (const p of paths) {
+                                    await deleteFileOrDir(serverId, p);
+                                }
+                                res.writeHead(200, { "Content-Type": "application/json" });
+                                res.end(JSON.stringify({ success: true }));
+                                return;
+                            }
+                        }
+                    } catch (e) { }
+
                     await deleteFileOrDir(serverId, reqPath);
                     res.writeHead(200, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ success: true }));
@@ -257,7 +273,7 @@ export function startHTTPServer() {
                 const actionParam = backupsMatch[2]; // e.g. "", "xyz.tar.gz", "xyz.tar.gz/restore"
 
                 try {
-                    console.log(`[HTTP] Backup action: ${req.method} for Server: ${serverId}, Action: ${actionParam}`);
+                    //console.log(`[HTTP] Backup action: ${req.method} for Server: ${serverId}, Action: ${actionParam}`);
 
                     if (req.method === "GET" && !actionParam) {
                         const backups = await listBackups(serverId);
