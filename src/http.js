@@ -119,20 +119,6 @@ export function startHTTPServer() {
                 }
             }
 
-            // ── Delete container ────────────────
-            const deleteMatch = pathname.match(/^\/api\/servers\/(.+)$/);
-            if (deleteMatch && req.method === "DELETE") {
-                const dockerId = deleteMatch[1];
-                try {
-                    await deleteServer(dockerId);
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ success: true }));
-                } catch (e) {
-                    res.writeHead(500, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ message: "Failed to delete container: " + e.message }));
-                }
-                return;
-            }
 
             // ── Servers metrics ────────────────
             if (pathname === "/api/metrics" && req.method === "GET") {
@@ -313,6 +299,22 @@ export function startHTTPServer() {
                     res.end(JSON.stringify({ message: e.message }));
                     return;
                 }
+            }
+
+            // ── Delete container ────────────────
+            // (Moved below backups/files to avoid collision)
+            const deleteMatch = pathname.match(/^\/api\/servers\/(.+)$/);
+            if (deleteMatch && req.method === "DELETE") {
+                const dockerId = deleteMatch[1];
+                try {
+                    await deleteServer(dockerId);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: "Failed to delete container: " + e.message }));
+                }
+                return;
             }
 
             // ── 404 ────────────────────────────
