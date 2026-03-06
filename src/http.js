@@ -4,7 +4,7 @@ import fs from "fs";
 import busboy from "busboy";
 import config from "./config.js";
 import { getNodeMetrics, getServerMetrics } from "./metrics.js";
-import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers, getContainerIP } from "./docker.js";
+import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers, getContainerIP, upgradeServer } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
 import { startProxy, stopProxy, updateProxy } from "./proxy.js";
@@ -81,6 +81,24 @@ export function startHTTPServer() {
                 }, 5000);
 
                 req.on("close", () => clearInterval(intervalId));
+                return;
+            }
+
+            // ── Server upgrade ─────────────────
+            const upgradeMatch = pathname.match(/^\/api\/servers\/(.+)\/upgrade$/);
+            if (upgradeMatch && req.method === "POST") {
+                try {
+                    const body = await readBody(req);
+                    const { limits } = JSON.parse(body);
+
+                    await upgradeServer(upgradeMatch[1], limits);
+
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: "Failed to upgrade server limits", error: e.message }));
+                }
                 return;
             }
 
