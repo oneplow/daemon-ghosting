@@ -142,23 +142,22 @@ export async function createServer({ serverId, image, env, limits, ports }) {
 }
 
 /**
- * Upgrade container resource limits dynamically
+ * Upgrade container resource limits dynamically (no restart)
  */
 export async function upgradeServer(dockerId, limits) {
     const container = docker.getContainer(dockerId);
 
+    const memBytes = (limits?.memory || 1024) * 1024 * 1024;
+
     const updateOptions = {
-        Memory: (limits?.memory || 1024) * 1024 * 1024,
+        Memory: memBytes,
+        MemorySwap: memBytes,       // Must equal Memory to avoid Docker auto-kill
         NanoCpus: Math.floor((limits?.cpu || 100) * 1e7),
+        RestartPolicy: { Name: "unless-stopped" },
     };
 
-    // Note: DiskQuota updates depend on the storage driver on the host
-    if (limits?.disk) {
-        updateOptions.DiskQuota = limits.disk * 1024 * 1024;
-    }
-
     await container.update(updateOptions);
-    console.log(`[Docker] Container limits updated: ${dockerId}`);
+    console.log(`[Docker] Container limits updated (no restart): ${dockerId}`);
 }
 
 /**
