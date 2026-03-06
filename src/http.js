@@ -368,6 +368,119 @@ export function startHTTPServer() {
                 }
             }
 
+            // ── Console SSE Stream ─────────────
+            const consoleStreamMatch = pathname.match(/^\/api\/servers\/(.+)\/console\/stream$/);
+            if (consoleStreamMatch && req.method === "GET") {
+                const containerId = consoleStreamMatch[1];
+                try {
+                    const container = docker.getContainer(containerId);
+                    const info = await container.inspect();
+                    const serverId = info.Config.Labels["ghosting.server_id"];
+                    const isTty = info.Config.Tty;
+
+                    if (!serverId) throw new Error("Not a managed server");
+
+                    res.writeHead(200, {
+                        "Content-Type": "text/event-stream",
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                    });
+
+                    // Send initial connected event
+                    res.write(`data: ${JSON.stringify({ event: "connected", serverId })}\n\n`);
+
+                    // Stream container logs
+                    const stream = await container.logs({
+                        follow: true,
+                        stdout: true,
+                        stderr: true,
+                        tail: 100,
+                    });
+
+                    const parseChunk = (chunk) => {
+                        if (isTty) return chunk.toString("utf8");
+                        let text = "";
+                        let offset = 0;
+                        while (offset < chunk.length) {
+                            if (chunk.length - offset >= 8 &&
+                                (chunk[offset] === 1 || chunk[offset] === 2) &&
+                                chunk[offset + 1] === 0 &&
+                                chunk[offset + 2] === 0 &&
+                                chunk[offset + 3] === 0) {
+                                const size = chunk.readUInt32BE(offset + 4);
+                                if (size > 0 && offset + 8 + size <= chunk.length) {
+                                    text += chunk.toString("utf8", offset + 8, offset + 8 + size);
+                                    offset += 8 + size;
+                                    continue;
+                                }
+                            }
+                            text += chunk.toString("utf8", offset);
+                            break;
+                        }
+                        return text;
+                    };
+
+                    stream.on("data", (chunk) => {
+                        const text = parseChunk(chunk);
+                        if (text) {
+                            const filtered = text.replace(/(\x1B\[[0-9;]*[JKmsu])?\[Server process ended\](\x1B\[[0-9;]*[JKmsu])?/g, "");
+                            if (filtered) {
+                                res.write(`data: ${JSON.stringify({ event: "output", data: filtered })}\n\n`);
+                            }
+                        }
+                    });
+
+                    stream.on("end", () => {
+                        res.write(`data: ${JSON.stringify({ event: "ended" })}\n\n`);
+                        res.end();
+                    });
+
+                    stream.on("error", (err) => {
+                        res.write(`data: ${JSON.stringify({ event: "error", data: err.message })}\n\n`);
+                        res.end();
+                    });
+
+                    // Clean up when client disconnects
+                    req.on("close", () => {
+                        stream.destroy();
+                    });
+
+                } catch (e) {
+                    if (!res.headersSent) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ message: e.message }));
+                    }
+                }
+                return;
+            }
+
+            // ── Console Input (POST) ─────────────
+            const consoleInputMatch = pathname.match(/^\/api\/servers\/(.+)\/console\/input$/);
+            if (consoleInputMatch && req.method === "POST") {
+                const containerId = consoleInputMatch[1];
+                try {
+                    const body = await readBody(req);
+                    const { command } = JSON.parse(body);
+
+                    if (!command && command !== "") {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ message: "Missing 'command' field" }));
+                        return;
+                    }
+
+                    const { writeToStdin } = await import("./console.js");
+                    await writeToStdin(containerId, command);
+
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ message: e.message }));
+                }
+                return;
+            }
+
             // ── Delete container ────────────────
             // (Moved below backups/files to avoid collision)
             const deleteMatch = pathname.match(/^\/api\/servers\/(.+)$/);
