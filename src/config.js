@@ -6,7 +6,6 @@ const config = {
     nodeName: process.env.NODE_NAME || "SG-1",
 
     // API connection
-    apiEndpoint: process.env.API_ENDPOINT || "http://localhost:3000",
     authToken: process.env.DAEMON_AUTH_TOKEN || "ghd_dev_token",
 
     // HTTP server

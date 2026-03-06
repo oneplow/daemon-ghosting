@@ -26,7 +26,6 @@ console.log(`
 `);
 
 console.log(`[Daemon] Config:`);
-console.log(`  API Endpoint:  ${config.apiEndpoint}`);
 console.log(`  HTTP Port:     ${config.httpPort}`);
 console.log(`  Docker Socket: ${config.dockerSocket}`);
 console.log(`  Data Dir:      ${config.dataDir}`);

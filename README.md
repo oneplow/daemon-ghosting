@@ -1,98 +1,84 @@
 # GHosting Daemon
 
-Game server node daemon for GHosting. Manages Docker containers, collects metrics, streams console logs, and handles file/backup operations on the host machine.
+โปรแกรมเอเจนต์ฝั่งเครื่องโหนดสำหรับ GHosting ทำหน้าที่จัดการ Docker containers, เก็บข้อมูลสถิติ (Metrics), ดึงข้อมูล Log จากคอนโซล, และจัดการระบบไฟล์/แบ็คอัพบนเครื่องแมชชีน
 
-## Features
+## ฟีเจอร์หลัก (Features)
 
-- **Docker Management** — Create, start, stop, restart, kill, and delete game server containers
-- **System Metrics** — CPU, RAM, disk, and network monitoring (node-level + per-container)
-- **Console (SSE)** — Real-time container log streaming via Server-Sent Events
-- **File Manager** — List, read, write, upload, download, create, and delete files inside containers
-- **Backup & Restore** — Create `.tar.gz` backups and restore with one click
-- **TCP Proxy** — Route player traffic to isolated containers without exposing Docker ports
-- **FRP Tunneling** — Optional Fast Reverse Proxy support for NAT traversal
-- **WebSocket Heartbeat** — Maintains persistent connection with the central API
+- **การจัดการ Docker** — สร้าง, เริ่มทำงาน, หยุด, รีสตาร์ท, ปิดบังคับ (Kill), และลบเซิร์ฟเวอร์เกม (Container)
+- **ตรวจสอบทรัพยากร (System Metrics)** — ดึงข้อมูลการใช้ CPU, RAM, ดิสก์, และเครือข่าย แบบละเอียด
+- **คอนโซลแบบเรียลไทม์ (Console)** — สตรีม Log ของคอนเทนเนอร์สดๆ ผ่าน Server-Sent Events (SSE)
+- **ตัวจัดการไฟล์ (File Manager)** — ดูรายชื่อไฟล์, อ่าน, เขียน, อัพโหลด, ดาวน์โหลด, สร้าง, และลบไฟล์ภายในเครื่องเซิร์ฟเวอร์ได้
+- **แบ็คอัพและกู้คืน (Backup & Restore)** — สร้างไฟล์แบ็คอัพ `.tar.gz` ได้อย่างรวดเร็วและปลอดภัย
+- **TCP Proxy** — ส่งต่อการเชื่อมต่อให้ผู้เล่นเข้าห้องเกมได้ โดยไม่ต้องต่อกับ Docker Port ตรงๆ
+- **FRP Tunneling** — รองรับ Fast Reverse Proxy (FRP) เพื่อทะลวงผ่านเร้าเตอร์สำหรับเครื่องที่ไม่ได้ Public IP
+- **Stateless HTTP API** — ใช้สถาปัตยกรรม REST API 100% ทำให้ติดตั้งง่ายและเบาเครื่อง ไร้การเชื่อมต่อค้าง (WebSocket)
 
-## Quick Start
+## เริ่มต้นใช้งาน (Quick Start)
 
-### Prerequisites
+### สิ่งที่ต้องเตรียม (Prerequisites)
 
 - Node.js 20+
-- Docker Engine installed and running
-- Access to Docker socket (`/var/run/docker.sock`)
+- ติดตั้งและรัน Docker Engine เอาไว้แล้ว
+- มีสิทธิ์ในการเข้าถึง Docker socket (`/var/run/docker.sock`)
 
-### Run with Docker
+### รันผ่าน Docker
 
 ```bash
-# From the daemon directory
+# รันจากโฟลเดอร์ daemon ได้เลยครับ
 cd daemon
 docker compose up -d
 ```
 
-### Run Locally (Development)
+### รันบนเครื่องจริง (สำหรับการพัฒนา)
 
 ```bash
-# Install dependencies
+# ติดตั้งแพ็คเกจ
 npm install
 
-# Copy and configure environment
+# คัดลอกและตั้งค่า Environment เบื้องต้น
 cp .env.example .env
-# Edit .env with your settings
+# แก้ไขไฟล์ .env เพื่อใส่ข้อมูลที่ต้องการ
 
-# Start with auto-reload
+# รันพร้อมระบบ Auto-reload เพื่อสะดวกในการแก้ไขโค้ด
 npm run dev
 ```
 
-## Environment Variables
+## ตัวแปรสภาพแวดล้อม (Environment Variables)
 
-| Variable | Default | Description |
+กำหนดค่าที่ไฟล์ `.env` :
+
+| ตัวแปร | ค่าเริ่มต้น (Default) | คำอธิบาย |
 |---|---|---|
-| `DAEMON_ID` | `daemon-01` | Unique daemon identifier |
-| `NODE_NAME` | `SG-1` | Display name for this node |
-| `API_ENDPOINT` | `http://localhost:3000` | Central API URL |
-| `WS_ENDPOINT` | `ws://localhost:3000` | Central API WebSocket URL |
-| `DAEMON_AUTH_TOKEN` | `ghd_dev_token` | Auth token (must match Node config in web panel) |
-| `DAEMON_PORT` | `8443` | HTTP API listen port |
-| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket path |
-| `DATA_DIR` | `/opt/ghosting/data` | Server data storage directory |
-| `CONTAINER_PREFIX` | `gs-` | Docker container name prefix |
-| `HEARTBEAT_INTERVAL` | `30000` | Heartbeat interval (ms) |
-| `METRICS_INTERVAL` | `10000` | Metrics collection interval (ms) |
-| `FRP_ENABLED` | `false` | Enable FRP tunneling |
+| `DAEMON_ID` | `daemon-01` | รหัสประจำตัวของ Daemon (ห้ามซ้ำกันหากมีหลายโหนด) |
+| `NODE_NAME` | `SG-1` | ชื่อโหนดสำหรับแสดงผลหน้าเว็บ |
+| `DAEMON_AUTH_TOKEN` | `ghd_dev_token` | โทเคนสำหรับยืนยันความปลอดภัย (ต้องตั้งค่าให้ตรงกับหน้าเว็บ GHosting) |
+| `DAEMON_PORT` | `8443` | พอร์ตที่ Daemon จะเปิดรอรับคำสั่ง (REST API) |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | พาธที่อยู่ของ Docker socket บนเครื่องโหนด |
+| `DATA_DIR` | `/opt/ghosting/data` | โฟลเดอร์ที่ใช้เก็บข้อมูลเซิร์ฟเวอร์เกม และไฟล์แบ็คอัพ |
+| `CONTAINER_PREFIX` | `gs-` | คำนำหน้าชื่อของ Docker container เมื่อถูกสร้าง |
+| `FRP_ENABLED` | `false` | ตั้งค่า เปิด-ปิด ระบบ FRP |
 
-## API Endpoints
+## API Endpoints (เส้นทางการสื่อสาร)
 
-| Method | Path | Description |
+รับคำสั่งแบบไร้สถานะ (Stateless Protocol):
+
+| วิธีการ (Method) | เส้นทาง (Path) | คำอธิบาย |
 |---|---|---|
-| `GET` | `/api/health` | Node health + metrics |
-| `GET` | `/api/servers` | List managed containers |
-| `POST` | `/api/servers` | Create a new server |
-| `DELETE` | `/api/servers/:id` | Delete a server |
-| `POST` | `/api/servers/:id/power` | Power action (start/stop/restart/kill) |
-| `GET` | `/api/servers/:id/stats` | Container resource stats |
-| `GET` | `/api/servers/:id/console/stream` | SSE log stream |
-| `POST` | `/api/servers/:id/console/input` | Send command to server stdin |
-| `GET` | `/api/servers/:id/files` | List files |
-| `GET` | `/api/servers/:id/files/content` | Read file content |
-| `PUT` | `/api/servers/:id/files/content` | Write file content |
-| `POST` | `/api/servers/:id/files/upload` | Upload files |
-| `GET` | `/api/servers/:id/files/download` | Download a file |
-| `GET` | `/api/servers/:id/backups` | List backups |
-| `POST` | `/api/servers/:id/backups` | Create backup |
-| `DELETE` | `/api/servers/:id/backups/:file` | Delete backup |
-| `POST` | `/api/servers/:id/backups/:file/restore` | Restore backup |
-| `GET` | `/api/metrics` | All server metrics |
-
-## Architecture
-
-```
-┌─────────────┐      WebSocket       ┌──────────────┐
-│  GHosting   │◄─────────────────────│   Daemon     │
-│  Web Panel  │      HTTP API        │   (this)     │
-└─────────────┘─────────────────────►│              │
-                                     │  ┌─────────┐ │
-                                     │  │ Docker  │ │
-                                     │  │ Engine  │ │
-                                     │  └─────────┘ │
-                                     └──────────────┘
-```
+| `GET` | `/api/health` | ดูข้อมูลแจ้งสถานะแบนด์วิธ และสเป็คเครื่องโหนด |
+| `GET` | `/api/servers` | แสดงรายการคอนเทนเนอร์ที่ GHosting จัดการรันอยู่ |
+| `POST` | `/api/servers` | สร้างเซิร์ฟเวอร์เกมห้องใหม่ลงโหนด |
+| `DELETE` | `/api/servers/:id` | ลบเซิร์ฟเวอร์ |
+| `POST` | `/api/servers/:id/power` | ควบคุมปุ่มเปิดห้อง พลังงานต่างๆ (start/stop/restart/kill) |
+| `GET` | `/api/servers/:id/stats` | นำข้อมูลการใช้ทรัพยากรเกมนั้นๆ ออกมา (Dashboard) |
+| `GET` | `/api/servers/:id/console/stream` | สตรีมหน้าปัด Console สีดำๆ (เชื่อมต่อรูปแบบ SSE) |
+| `POST` | `/api/servers/:id/console/input` | รับคำสั่งให้ทำงานหน้าปัด Console ผ่าน stdin |
+| `GET` | `/api/servers/:id/files` | เรียกลายละเอียดไฟล์โฟลเดอร์ |
+| `GET` | `/api/servers/:id/files/content` | อ่านเนื้อหาไฟล์เซิร์ฟเวอร์ |
+| `PUT` | `/api/servers/:id/files/content` | การแก้ไจเนื้อหาไฟล์เซิร์ฟเวอร์ |
+| `POST` | `/api/servers/:id/files/upload` | อัพโหลดไฟล์เข้า |
+| `GET` | `/api/servers/:id/files/download` | ดาวน์โหลดไฟล์ออก |
+| `GET` | `/api/servers/:id/backups` | ดึงระบบค้นหาประวัติแบ็คอัพที่มี |
+| `POST` | `/api/servers/:id/backups` | สร้างแบ็คอัพ |
+| `DELETE` | `/api/servers/:id/backups/:file` | สั่งลบแบ็คอัพ |
+| `POST` | `/api/servers/:id/backups/:file/restore` | เริ่มระบบ Restore แบ็คอัพ |
+| `GET` | `/api/metrics` | ดู Metrics ของแผงเซิร์ฟเวอร์ |
