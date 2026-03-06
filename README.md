@@ -24,8 +24,9 @@ Game server node daemon for GHosting. Manages Docker containers, collects metric
 ### Run with Docker
 
 ```bash
-# From the project root (GHosting/)
-docker compose up -d daemon
+# From the daemon directory
+cd daemon
+docker compose up -d
 ```
 
 ### Run Locally (Development)

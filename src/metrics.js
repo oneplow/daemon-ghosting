@@ -78,31 +78,4 @@ export async function getServerMetrics() {
     return metrics;
 }
 
-/**
- * Start periodic metrics collection
- */
-export function startMetricsCollector(broadcastFn) {
-    // Node heartbeat
-    setInterval(async () => {
-        try {
-            const metrics = await getNodeMetrics();
-            broadcastFn("node:heartbeat", metrics);
-        } catch (err) {
-            console.error("[Metrics] Heartbeat error:", err.message);
-        }
-    }, config.heartbeatInterval);
 
-    // Server metrics
-    setInterval(async () => {
-        try {
-            const serverMetrics = await getServerMetrics();
-            for (const m of serverMetrics) {
-                broadcastFn("server:stats", m);
-            }
-        } catch (err) {
-            console.error("[Metrics] Server metrics error:", err.message);
-        }
-    }, config.metricsInterval);
-
-    console.log(`[Metrics] Collector started (heartbeat: ${config.heartbeatInterval}ms, metrics: ${config.metricsInterval}ms)`);
-}

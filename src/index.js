@@ -1,5 +1,4 @@
 import config from "./config.js";
-import { connectToAPI } from "./websocket.js";
 import { startHTTPServer } from "./http.js";
 import { isFRPAvailable } from "./frp.js";
 
@@ -13,8 +12,7 @@ import { isFRPAvailable } from "./frp.js";
  *   - docker.js     → Container lifecycle (create, start, stop, delete)
  *   - metrics.js    → System & container metrics collection
  *   - console.js    → Console session management & log streaming
- *   - websocket.js  → WebSocket communication with central API
- *   - http.js       → HTTP API server (backup for WebSocket)
+ *   - http.js       → HTTP API server
  *   - frp.js        → FRP tunnel management for public access
  *   - config.js     → Environment configuration
  */
@@ -29,7 +27,6 @@ console.log(`
 
 console.log(`[Daemon] Config:`);
 console.log(`  API Endpoint:  ${config.apiEndpoint}`);
-console.log(`  WS Endpoint:   ${config.wsEndpoint}`);
 console.log(`  HTTP Port:     ${config.httpPort}`);
 console.log(`  Docker Socket: ${config.dockerSocket}`);
 console.log(`  Data Dir:      ${config.dataDir}`);
@@ -42,11 +39,8 @@ if (config.frpEnabled) {
 
 console.log("");
 
-// Start HTTP server (always available)
+// Start HTTP server
 startHTTPServer();
-
-// Connect to central API via WebSocket
-connectToAPI();
 
 // Graceful shutdown
 process.on("SIGINT", () => {

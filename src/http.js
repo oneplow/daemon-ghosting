@@ -2,11 +2,8 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import busboy from "busboy";
-import { WebSocketServer } from "ws";
 import config from "./config.js";
-import { getConnectionStatus } from "./websocket.js";
 import { getNodeMetrics, getServerMetrics } from "./metrics.js";
-import { getActiveSessionCount } from "./console.js";
 import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers, getContainerIP } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
@@ -40,8 +37,6 @@ export function startHTTPServer() {
                     status: "ok",
                     daemon: config.daemonId,
                     nodeName: config.nodeName,
-                    wsConnected: getConnectionStatus(),
-                    activeSessions: getActiveSessionCount(),
                     ...metrics,
                 }));
                 return;
@@ -512,123 +507,6 @@ export function startHTTPServer() {
             console.error("[HTTP] Error:", err.message);
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ message: err.message }));
-        }
-    });
-
-    // Handle WebSocket Upgrades
-    const wss = new WebSocketServer({ noServer: true });
-
-    server.on("upgrade", (request, socket, head) => {
-        const url = new URL(request.url, `http://${request.headers.host}`);
-
-        // Match /api/servers/:id/console
-        const consoleMatch = url.pathname.match(/^\/api\/servers\/(.+)\/console$/);
-
-        if (consoleMatch) {
-            // Verify Auth via query parameter or header for WebSocket
-            const token = url.searchParams.get("token") || request.headers["x-auth-token"];
-            if (token !== config.authToken) {
-                socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-                socket.destroy();
-                return;
-            }
-
-            const containerId = consoleMatch[1];
-
-            wss.handleUpgrade(request, socket, head, (ws) => {
-                wss.emit("connection", ws, request, containerId);
-            });
-        } else {
-            socket.destroy();
-        }
-    });
-
-    wss.on("connection", async (ws, request, containerId) => {
-        try {
-            const container = docker.getContainer(containerId);
-            const info = await container.inspect();
-            const serverId = info.Config.Labels["ghosting.server_id"];
-            const isTty = info.Config.Tty;
-
-            if (!serverId) throw new Error("Not a managed server");
-
-            // Attach to stream logs
-            const stream = await container.logs({
-                follow: true,
-                stdout: true,
-                stderr: true,
-                tail: 100
-            });
-
-            // Send data to client
-            stream.on("data", (chunk) => {
-                let text;
-                if (isTty) {
-                    // TTY mode: no multiplex headers, raw text
-                    text = chunk.toString("utf8");
-                } else {
-                    // Non-TTY: Docker prepends 8-byte multiplex header per frame
-                    text = "";
-                    let offset = 0;
-                    while (offset < chunk.length) {
-                        if (chunk.length - offset >= 8 &&
-                            (chunk[offset] === 1 || chunk[offset] === 2) &&
-                            chunk[offset + 1] === 0 &&
-                            chunk[offset + 2] === 0 &&
-                            chunk[offset + 3] === 0) {
-                            const size = chunk.readUInt32BE(offset + 4);
-                            if (size > 0 && offset + 8 + size <= chunk.length) {
-                                text += chunk.toString("utf8", offset + 8, offset + 8 + size);
-                                offset += 8 + size;
-                                continue;
-                            }
-                        }
-                        text += chunk.toString("utf8", offset);
-                        break;
-                    }
-                }
-
-                if (text) {
-                    // Filter out [Server process ended] with potential ANSI codes
-                    const filteredText = text.replace(/(\x1B\[[0-9;]*[JKmsu])?\[Server process ended\](\x1B\[[0-9;]*[JKmsu])?/g, "");
-                    if (filteredText && ws.readyState === ws.OPEN) {
-                        ws.send(JSON.stringify({ event: "output", data: filteredText }));
-                    }
-                }
-            });
-
-            stream.on("end", () => {
-                if (ws.readyState === ws.OPEN) {
-                    ws.close(1000, "stream ended");
-                }
-            });
-
-            // Receive commands from client
-            ws.on("message", async (msg) => {
-                try {
-                    const data = JSON.parse(msg.toString());
-                    if (data.event === "input" && data.command) {
-                        const { writeToStdin } = await import("./console.js");
-                        await writeToStdin(containerId, data.command);
-                    }
-                } catch (e) {
-                    console.error("[WS] Parse error:", e);
-                }
-            });
-
-            ws.on("close", () => {
-                stream.destroy();
-            });
-
-            ws.on("error", (err) => {
-                console.error("[WS] Client error:", err.message);
-                stream.destroy();
-            });
-
-        } catch (err) {
-            console.error("[WS] Connection error:", err.message);
-            ws.send(JSON.stringify({ event: "error", data: err.message }));
-            ws.close();
         }
     });
 

@@ -7,7 +7,6 @@ const config = {
 
     // API connection
     apiEndpoint: process.env.API_ENDPOINT || "http://localhost:3000",
-    wsEndpoint: process.env.WS_ENDPOINT || "ws://localhost:3000",
     authToken: process.env.DAEMON_AUTH_TOKEN || "ghd_dev_token",
 
     // HTTP server
@@ -18,10 +17,6 @@ const config = {
     dockerSocket: process.env.DOCKER_SOCKET || "/var/run/docker.sock",
     dataDir: process.env.DATA_DIR || "/opt/ghosting/data",
     containerPrefix: process.env.CONTAINER_PREFIX || "gs-",
-
-    // Intervals
-    heartbeatInterval: parseInt(process.env.HEARTBEAT_INTERVAL || "30000"),
-    metricsInterval: parseInt(process.env.METRICS_INTERVAL || "10000"),
 
     // FRP
     frpEnabled: process.env.FRP_ENABLED === "true",
