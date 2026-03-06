@@ -48,6 +48,42 @@ export function startHTTPServer() {
                 return;
             }
 
+            // ── Health stream (SSE) ───────────────────
+            if (pathname === "/api/health/stream" && req.method === "GET") {
+                res.writeHead(200, {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*"
+                });
+
+                const sendMetrics = async () => {
+                    try {
+                        const metrics = await getNodeMetrics();
+                        res.write(`data: ${JSON.stringify({
+                            status: "ok",
+                            daemon: config.daemonId,
+                            nodeName: config.nodeName,
+                            ...metrics,
+                        })}\n\n`);
+                    } catch (e) {
+                        res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+                    }
+                };
+
+                sendMetrics(); // Send initial
+                const intervalId = setInterval(() => {
+                    if (res.writableEnded) {
+                        clearInterval(intervalId);
+                        return;
+                    }
+                    sendMetrics();
+                }, 5000);
+
+                req.on("close", () => clearInterval(intervalId));
+                return;
+            }
+
             // ── Server power ───────────────────
             const powerMatch = pathname.match(/^\/api\/servers\/(.+)\/power$/);
             if (powerMatch && req.method === "POST") {
