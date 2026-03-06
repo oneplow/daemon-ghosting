@@ -19,7 +19,7 @@ import { isFRPAvailable } from "./frp.js";
 
 console.log(`
   ╔═══════════════════════════════════════╗
-  ║   GHosting Daemon v1.0.0             ║
+  ║   GHosting Daemon v1.0.0              ║
   ║   Node: ${config.nodeName.padEnd(30)}║
   ║   ID:   ${config.daemonId.substring(0, 30).padEnd(30)}║
   ╚═══════════════════════════════════════╝

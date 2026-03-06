@@ -17,6 +17,12 @@ export function startHTTPServer() {
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url, `http://${req.headers.host}`);
         const pathname = url.pathname;
+        const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+
+        // Log incoming request
+        if (pathname !== "/api/metrics") { // Ignore frequent metrics polling
+            console.log(`[HTTP] ${req.method} ${pathname} from ${clientIp}`);
+        }
 
         // Auth check - handled first
         const authHeader = req.headers.authorization;
@@ -112,6 +118,43 @@ export function startHTTPServer() {
 
                 res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ success: true }));
+                return;
+            }
+
+            // ── Server stats stream (SSE) ──────
+            const statsStreamMatch = pathname.match(/^\/api\/servers\/(.+)\/stats\/stream$/);
+            if (statsStreamMatch && req.method === "GET") {
+                const containerId = statsStreamMatch[1];
+
+                res.writeHead(200, {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*"
+                });
+
+                // Send initial stats immediately
+                try {
+                    const initialStats = await getContainerStats(containerId);
+                    res.write(`data: ${JSON.stringify(initialStats)}\n\n`);
+                } catch (e) {
+                    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+                }
+
+                const intervalId = setInterval(async () => {
+                    if (res.writableEnded) {
+                        clearInterval(intervalId);
+                        return;
+                    }
+                    try {
+                        const stats = await getContainerStats(containerId);
+                        res.write(`data: ${JSON.stringify(stats)}\n\n`);
+                    } catch (e) {
+                        // Ignore errors or send them
+                    }
+                }, 3000);
+
+                req.on("close", () => clearInterval(intervalId));
                 return;
             }
 
