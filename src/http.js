@@ -161,6 +161,7 @@ export function startHTTPServer() {
             const statsStreamMatch = pathname.match(/^\/api\/servers\/(.+)\/stats\/stream$/);
             if (statsStreamMatch && req.method === "GET") {
                 const containerId = statsStreamMatch[1];
+                let isClosing = false;
 
                 res.writeHead(200, {
                     "Content-Type": "text/event-stream",
@@ -169,28 +170,36 @@ export function startHTTPServer() {
                     "Access-Control-Allow-Origin": "*"
                 });
 
-                // Send initial stats immediately
-                try {
-                    const initialStats = await getContainerStats(containerId);
-                    res.write(`data: ${JSON.stringify(initialStats)}\n\n`);
-                } catch (e) {
-                    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
-                }
+                const sendInitialStats = async () => {
+                    try {
+                        const initialStats = await getContainerStats(containerId);
+                        if (!isClosing) res.write(`data: ${JSON.stringify(initialStats)}\n\n`);
+                    } catch (e) {
+                        // Container might be offline/deleted, send 0 stats
+                        if (!isClosing) res.write(`data: ${JSON.stringify({ cpu: 0, memory: 0, disk: 0, network: { rx: 0, tx: 0 }, isOffline: true })}\n\n`);
+                    }
+                };
+
+                sendInitialStats();
 
                 const intervalId = setInterval(async () => {
-                    if (res.writableEnded) {
+                    if (res.writableEnded || isClosing) {
                         clearInterval(intervalId);
                         return;
                     }
                     try {
                         const stats = await getContainerStats(containerId);
-                        res.write(`data: ${JSON.stringify(stats)}\n\n`);
+                        if (!isClosing) res.write(`data: ${JSON.stringify(stats)}\n\n`);
                     } catch (e) {
-                        // Ignore errors or send them
+                        // Send zeroed stats if stopped
+                        if (!isClosing) res.write(`data: ${JSON.stringify({ cpu: 0, memory: 0, disk: 0, network: { rx: 0, tx: 0 }, isOffline: true })}\n\n`);
                     }
                 }, 3000);
 
-                req.on("close", () => clearInterval(intervalId));
+                req.on("close", () => {
+                    isClosing = true;
+                    clearInterval(intervalId);
+                });
                 return;
             }
 
