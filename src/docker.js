@@ -5,6 +5,48 @@ const docker = new Docker({ socketPath: config.dockerSocket });
 
 import fs from "fs/promises";
 
+const NETWORK_NAME = "ghosting-net";
+
+/**
+ * Ensure the ghosting-net Docker network exists
+ */
+export async function ensureNetwork() {
+    try {
+        const network = docker.getNetwork(NETWORK_NAME);
+        await network.inspect();
+        console.log(`[Docker] Network '${NETWORK_NAME}' already exists.`);
+    } catch {
+        console.log(`[Docker] Creating network '${NETWORK_NAME}'...`);
+        await docker.createNetwork({
+            Name: NETWORK_NAME,
+            Driver: "bridge",
+            CheckDuplicate: true,
+        });
+        console.log(`[Docker] Network '${NETWORK_NAME}' created.`);
+    }
+}
+
+/**
+ * Get the container's IP address on the ghosting-net network
+ */
+export async function getContainerIP(dockerId) {
+    const container = docker.getContainer(dockerId);
+    const info = await container.inspect();
+    const networks = info.NetworkSettings.Networks;
+
+    // Try ghosting-net first
+    if (networks[NETWORK_NAME]) {
+        return networks[NETWORK_NAME].IPAddress;
+    }
+
+    // Fallback: return any available IP
+    for (const net of Object.values(networks)) {
+        if (net.IPAddress) return net.IPAddress;
+    }
+
+    throw new Error(`Container ${dockerId} has no IP address`);
+}
+
 /**
  * Pull a Docker image only if missing
  */
@@ -42,21 +84,20 @@ export async function createServer({ serverId, image, env, limits, ports }) {
     // Ensure directory exists with proper permissions
     await fs.mkdir(dataPath, { recursive: true }).catch(() => { });
 
+    // Ensure the internal Docker network exists
+    await ensureNetwork();
+
     // Pull image first
     await pullImage(image);
 
     // Build env array
     const envArray = Object.entries(env || {}).map(([k, v]) => `${k}=${v}`);
 
-    // Build port bindings
+    // Expose ports inside container (for documentation), but NO host port bindings
     const exposedPorts = {};
-    const portBindings = {};
     if (ports && ports.length > 0) {
         ports.forEach((p) => {
             exposedPorts[`${p.container}/${p.protocol || "tcp"}`] = {};
-            portBindings[`${p.container}/${p.protocol || "tcp"}`] = [
-                { HostIp: "0.0.0.0", HostPort: String(p.host) },
-            ];
         });
     } else {
         // Default Minecraft port
@@ -75,9 +116,10 @@ export async function createServer({ serverId, image, env, limits, ports }) {
             NanoCpus: Math.floor((limits?.cpu || 100) * 1e7), // % → nanocpus
             DiskQuota: (limits?.disk || 10240) * 1024 * 1024, // MB → bytes
             Binds: [`${dataPath}:/data`],
-            PortBindings: portBindings,
+            // No PortBindings — container ports are NOT exposed on host
+            // Traffic goes through TCP proxy instead (proxy.js)
             RestartPolicy: { Name: "unless-stopped" },
-            NetworkMode: "bridge",
+            NetworkMode: NETWORK_NAME,
         },
         Labels: {
             "ghosting.server_id": serverId,
@@ -88,9 +130,14 @@ export async function createServer({ serverId, image, env, limits, ports }) {
     await container.start();
     console.log(`[Docker] Container started: ${containerName} (${container.id})`);
 
+    // Get the container's internal IP on ghosting-net
+    const containerIp = await getContainerIP(container.id);
+    console.log(`[Docker] Container IP: ${containerIp}`);
+
     return {
         containerId: container.id,
         containerName,
+        containerIp,
     };
 }
 

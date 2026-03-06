@@ -1,8 +1,9 @@
 import { WebSocket } from "ws";
 import config from "./config.js";
-import { createServer, powerAction, deleteServer } from "./docker.js";
+import { createServer, powerAction, deleteServer, getContainerIP } from "./docker.js";
 import { attachConsole, sendCommand, detachConsole } from "./console.js";
 import { startMetricsCollector } from "./metrics.js";
+import { startProxy, stopProxy } from "./proxy.js";
 
 let ws = null;
 let reconnectTimer = null;
@@ -88,6 +89,18 @@ async function handleMessage({ event, payload }) {
                     ports: payload.ports,
                 });
 
+                // Start TCP proxy for game ports
+                if (payload.ports && payload.ports.length > 0) {
+                    payload.ports.forEach((p) => {
+                        startProxy({
+                            serverId: payload.serverId,
+                            listenPort: p.host,
+                            containerIp: result.containerIp,
+                            containerPort: p.container,
+                        });
+                    });
+                }
+
                 send("server:status", {
                     serverId: payload.serverId,
                     status: "running",
@@ -114,6 +127,27 @@ async function handleMessage({ event, payload }) {
                     status: statusMap[payload.action],
                 });
 
+                // Manage proxy lifecycle
+                if (payload.action === "stop" || payload.action === "kill") {
+                    stopProxy(payload.serverId);
+                } else if (payload.action === "start" || payload.action === "restart") {
+                    try {
+                        const containerIp = await getContainerIP(payload.dockerId);
+                        if (payload.ports && payload.ports.length > 0) {
+                            payload.ports.forEach((p) => {
+                                startProxy({
+                                    serverId: payload.serverId,
+                                    listenPort: p.host,
+                                    containerIp,
+                                    containerPort: p.container,
+                                });
+                            });
+                        }
+                    } catch (proxyErr) {
+                        console.error("[WS] Proxy restart error:", proxyErr.message);
+                    }
+                }
+
                 // Re-attach console on start/restart
                 if (["start", "restart"].includes(payload.action)) {
                     attachConsole(payload.serverId, payload.dockerId, (line) => {
@@ -124,6 +158,7 @@ async function handleMessage({ event, payload }) {
             }
 
             case "server:delete": {
+                stopProxy(payload.serverId);
                 await deleteServer(payload.dockerId);
                 detachConsole(payload.serverId, () => { });
                 send("server:deleted", { serverId: payload.serverId });
@@ -150,6 +185,7 @@ async function handleMessage({ event, payload }) {
             // ── Reinstall ────────────────────────
             case "server:reinstall": {
                 send("server:status", { serverId: payload.serverId, status: "installing" });
+                stopProxy(payload.serverId);
                 await deleteServer(payload.dockerId);
 
                 const result = await createServer({
@@ -159,6 +195,18 @@ async function handleMessage({ event, payload }) {
                     limits: payload.limits,
                     ports: payload.ports,
                 });
+
+                // Start TCP proxy for reinstalled server
+                if (payload.ports && payload.ports.length > 0) {
+                    payload.ports.forEach((p) => {
+                        startProxy({
+                            serverId: payload.serverId,
+                            listenPort: p.host,
+                            containerIp: result.containerIp,
+                            containerPort: p.container,
+                        });
+                    });
+                }
 
                 send("server:status", {
                     serverId: payload.serverId,

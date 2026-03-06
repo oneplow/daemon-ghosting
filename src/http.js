@@ -7,9 +7,10 @@ import config from "./config.js";
 import { getConnectionStatus } from "./websocket.js";
 import { getNodeMetrics, getServerMetrics } from "./metrics.js";
 import { getActiveSessionCount } from "./console.js";
-import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers } from "./docker.js";
+import { docker, createServer, powerAction, deleteServer, getContainerStats, listManagedContainers, getContainerIP } from "./docker.js";
 import { getDirectorySize, listFiles, readFile, writeFile, createFileOrDir, deleteFileOrDir, getSafePath } from "./files.js";
 import { createBackup, listBackups, deleteBackup, restoreBackup } from "./backup.js";
+import { startProxy, stopProxy, updateProxy } from "./proxy.js";
 
 /**
  * HTTP API Server
@@ -80,6 +81,40 @@ export function startHTTPServer() {
                 }
 
                 await powerAction(containerId, action);
+
+                // Manage proxy lifecycle on power actions
+                if (action === "stop" || action === "kill") {
+                    // Get serverId from container labels
+                    try {
+                        const container = docker.getContainer(containerId);
+                        const info = await container.inspect();
+                        const sId = info.Config.Labels["ghosting.server_id"];
+                        if (sId) stopProxy(sId);
+                    } catch { }
+                } else if (action === "start" || action === "restart") {
+                    // Re-start proxy with updated container IP
+                    try {
+                        const container = docker.getContainer(containerId);
+                        const info = await container.inspect();
+                        const sId = info.Config.Labels["ghosting.server_id"];
+                        if (sId) {
+                            const containerIp = await getContainerIP(containerId);
+                            // Get the allocated port from query params or body
+                            const bodyData = JSON.parse(body);
+                            if (bodyData.allocatedPort && bodyData.containerPort) {
+                                startProxy({
+                                    serverId: sId,
+                                    listenPort: bodyData.allocatedPort,
+                                    containerIp,
+                                    containerPort: bodyData.containerPort,
+                                });
+                            }
+                        }
+                    } catch (proxyErr) {
+                        console.error("[HTTP] Proxy restart error:", proxyErr.message);
+                    }
+                }
+
                 res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ success: true }));
                 return;
@@ -109,6 +144,19 @@ export function startHTTPServer() {
 
                     try {
                         const result = await createServer({ serverId, image, env, limits, ports });
+
+                        // Start TCP proxy for the game port
+                        if (ports && ports.length > 0) {
+                            ports.forEach((p) => {
+                                startProxy({
+                                    serverId,
+                                    listenPort: p.host,
+                                    containerIp: result.containerIp,
+                                    containerPort: p.container,
+                                });
+                            });
+                        }
+
                         res.writeHead(200, { "Content-Type": "application/json" });
                         res.end(JSON.stringify(result));
                     } catch (e) {
@@ -326,6 +374,14 @@ export function startHTTPServer() {
             if (deleteMatch && req.method === "DELETE") {
                 const dockerId = deleteMatch[1];
                 try {
+                    // Stop proxy before deleting container
+                    try {
+                        const container = docker.getContainer(dockerId);
+                        const info = await container.inspect();
+                        const sId = info.Config.Labels["ghosting.server_id"];
+                        if (sId) stopProxy(sId);
+                    } catch { }
+
                     await deleteServer(dockerId);
                     res.writeHead(200, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ success: true }));
